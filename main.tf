@@ -40,6 +40,11 @@ resource "coder_agent" "main" {
       touch ~/.init_done
     fi
 
+    mkdir -p ~/Android
+    if [ ! -e ~/Android/Sdk ]; then
+      ln -s /opt/android-sdk ~/Android/Sdk
+    fi
+
     # Add any commands that should be executed at workspace startup (e.g install requirements, start a program, etc) here
   EOT
 
@@ -52,6 +57,9 @@ resource "coder_agent" "main" {
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
+    JAVA_HOME           = "/usr/lib/jvm/java-17-openjdk-amd64"
+    ANDROID_HOME        = "/opt/android-sdk"
+    ANDROID_SDK_ROOT    = "/opt/android-sdk"
   }
 
   # The following metadata blocks are optional. They are used to display
@@ -180,16 +188,36 @@ resource "docker_volume" "home_volume" {
   }
 }
 
+resource "docker_image" "workspace" {
+  count = data.coder_workspace.me.start_count
+  name  = "coder-${data.coder_workspace.me.id}-workspace:latest"
+
+  build {
+    context    = path.module
+    dockerfile = "Dockerfile"
+  }
+
+  triggers = {
+    dockerfile_sha1 = filesha1("${path.module}/Dockerfile")
+  }
+}
+
 resource "docker_container" "workspace" {
   count = data.coder_workspace.me.start_count
-  image = "codercom/enterprise-base:ubuntu"
+  image = docker_image.workspace[count.index].image_id
   # Uses lower() to avoid Docker restriction on container names.
   name = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
   # Hostname makes the shell more user friendly: coder@my-workspace:~$
   hostname = data.coder_workspace.me.name
   # Use the docker gateway if the access URL is 127.0.0.1
   entrypoint = ["sh", "-c", replace(coder_agent.main.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")]
-  env        = ["CODER_AGENT_TOKEN=${coder_agent.main.token}"]
+  env = [
+    "CODER_AGENT_TOKEN=${coder_agent.main.token}",
+    "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64",
+    "ANDROID_HOME=/opt/android-sdk",
+    "ANDROID_SDK_ROOT=/opt/android-sdk",
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/java-17-openjdk-amd64/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools",
+  ]
   host {
     host = "host.docker.internal"
     ip   = "host-gateway"
