@@ -1,5 +1,7 @@
 FROM codercom/enterprise-base:ubuntu
 
+USER root
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV ANDROID_HOME=/opt/android-sdk
@@ -39,3 +41,5 @@ RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
     "build-tools;35.0.0" \
   && rm -f /tmp/android-cmdline-tools.zip \
   && chown -R coder:coder ${ANDROID_HOME}
+
+USER coder
